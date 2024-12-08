@@ -28,9 +28,15 @@ type ChairLocationCached struct {
 	UpdatedAt time.Time
 }
 
+type LatestRideStatusCached struct {
+	RideID string
+	Status string
+}
+
 var (
-	LatestChairLocation = cache.NewWriteHeavyCache[string, ChairLocationCached]()
-	TotalDistance       = cache.NewWriteHeavyCacheInteger[string, int]()
+	LatestChairLocation   = cache.NewWriteHeavyCache[string, ChairLocationCached]()
+	TotalDistance         = cache.NewWriteHeavyCacheInteger[string, int]()
+	LatestRideStatusCache = cache.NewWriteHeavyCache[string, LatestRideStatusCached]()
 )
 
 func main() {
@@ -195,6 +201,19 @@ func calcCache(w http.ResponseWriter, r *http.Request) {
 
 	LatestChairLocation.SetItems(lastLocation)
 	TotalDistance.SetItems(totalDistances)
+
+	rides := []RideStatus{}
+	if err := db.Select(&rides, "SELECT * FROM ride_statuses ORDER BY created_at"); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	latestRideStatus := map[string]LatestRideStatusCached{}
+	for _, ride := range rides {
+		latestRideStatus[ride.RideID] = LatestRideStatusCached{RideID: ride.RideID, Status: ride.Status}
+	}
+
+	LatestRideStatusCache.SetItems(latestRideStatus)
 }
 
 func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {

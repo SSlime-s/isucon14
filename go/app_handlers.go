@@ -374,6 +374,7 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Commitでキャッシュ
 	if _, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
@@ -459,6 +460,10 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	LatestRideStatusCache.Set(rideID, LatestRideStatusCached{
+		RideID: rideID,
+		Status: "MATCHING",
+	})
 
 	writeJSON(w, http.StatusAccepted, &appPostRidesResponse{
 		RideID: rideID,
@@ -590,6 +595,7 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Commit でキャッシュ
 	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`,
@@ -652,6 +658,10 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	LatestRideStatusCache.Set(rideID, LatestRideStatusCached{
+		RideID: rideID,
+		Status: "COMPLETED",
+	})
 
 	writeJSON(w, http.StatusOK, &appPostRideEvaluationResponse{
 		CompletedAt: ride.UpdatedAt.UnixMilli(),
@@ -943,29 +953,52 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// query, args, err := sqlx.In(
+	// 	// `SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id WHERE (rs.ride_id, rs.created_at) IN (SELECT ride_id, MAX(created_at) FROM ride_statuses GROUP BY ride_id) AND r.chair_id IN (?)`,
+	// 	`SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id INNER JOIN (SELECT ride_id, MAX(created_at) AS max_created_at FROM ride_statuses GROUP BY ride_id) latest_rs ON rs.ride_id = latest_rs.ride_id AND rs.created_at = latest_rs.max_created_at WHERE r.chair_id IN (?)`,
+	// 	chairIds,
+	// )
+	// if err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
+
+	// rows := []chairIdWithStatus{}
+	// if err := tx.SelectContext(ctx, &rows, query, args...); err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
+	type RideIdChairId struct {
+		RideId  string `db:"ride_id"`
+		ChairId string `db:"chair_id"`
+	}
+	rideIdChairIds := []RideIdChairId{}
 	query, args, err := sqlx.In(
-		// `SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id WHERE (rs.ride_id, rs.created_at) IN (SELECT ride_id, MAX(created_at) FROM ride_statuses GROUP BY ride_id) AND r.chair_id IN (?)`,
-		`SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id INNER JOIN (SELECT ride_id, MAX(created_at) AS max_created_at FROM ride_statuses GROUP BY ride_id) latest_rs ON rs.ride_id = latest_rs.ride_id AND rs.created_at = latest_rs.max_created_at WHERE r.chair_id IN (?)`,
+		`SELECT ride_id, chair_id FROM rides WHERE chair_id IN (?)`,
 		chairIds,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-
-	rows := []chairIdWithStatus{}
-	if err := tx.SelectContext(ctx, &rows, query, args...); err != nil {
+	err = tx.SelectContext(ctx, &rideIdChairIds, query, args...)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	rideIdToChairIdMap := map[string]string{}
+	for _, rideIdChairId := range rideIdChairIds {
+		rideIdToChairIdMap[rideIdChairId.RideId] = rideIdChairId.ChairId
+	}
+	latestRideStatuses := LatestRideStatusCache.GetItems()
 
 	chairsStatuses := map[string]bool{}
 	for _, chair := range chairs {
 		chairsStatuses[chair.ID] = true
 	}
-	for _, row := range rows {
-		if row.Status != "COMPLETED" {
-			chairsStatuses[row.ChairID] = false
+	for _, status := range latestRideStatuses {
+		if status.Status != "COMPLETED" {
+			chairsStatuses[rideIdToChairIdMap[status.RideID]] = false
 		}
 	}
 
