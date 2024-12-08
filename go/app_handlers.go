@@ -863,6 +863,7 @@ type chairIdWithStatus struct {
 	ChairID string `db:"chair_id"`
 	Status  string `db:"status"`
 }
+
 func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	latStr := r.URL.Query().Get("latitude")
@@ -923,9 +924,28 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	for _, chair := range chairs {
 		chairIds = append(chairIds, chair.ID)
 	}
+	if len(chairIds) == 0 {
+		retrievedAt := &time.Time{}
+		err = tx.GetContext(
+			ctx,
+			retrievedAt,
+			`SELECT CURRENT_TIMESTAMP(6)`,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, &appGetNearbyChairsResponse{
+			Chairs:      nearbyChairs,
+			RetrievedAt: retrievedAt.UnixMilli(),
+		})
+		return
+	}
 
 	query, args, err := sqlx.In(
 		`SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id WHERE (rs.ride_id, rs.created_at) IN (SELECT ride_id, MAX(created_at) FROM ride_statuses GROUP BY ride_id) AND r.chair_id IN (?)`,
+		chairIds,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -953,6 +973,24 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		if isOk {
 			okChairIds = append(okChairIds, chairID)
 		}
+	}
+	if len(okChairIds) == 0 {
+		retrievedAt := &time.Time{}
+		err = tx.GetContext(
+			ctx,
+			retrievedAt,
+			`SELECT CURRENT_TIMESTAMP(6)`,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, &appGetNearbyChairsResponse{
+			Chairs:      nearbyChairs,
+			RetrievedAt: retrievedAt.UnixMilli(),
+		})
+		return
 	}
 
 	chairLocations := []ChairLocation{}
