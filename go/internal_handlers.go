@@ -10,13 +10,14 @@ type checkEmpties struct {
 	Empty   bool   `db:"empty"`
 }
 type chairIdWithModel struct {
-	ID string `db:"chair_id"`
-	Speed   int    `db:"speed"`
+	ID    string `db:"chair_id"`
+	Speed int    `db:"speed"`
 }
 type ChairIdAndRideId struct {
 	ChairID string `db:"chair_id"`
 	RideID  string `db:"ride_id"`
 }
+
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -60,7 +61,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// ライドと椅子のマッチング
 	weight_matrix := [][]float64{}
-	zero_array := make([]float64, len(availableChairs) + 1)
+	zero_array := make([]float64, len(availableChairs)+1)
 	weight_matrix = append(weight_matrix, zero_array)
 	for _, ride := range rides {
 		weight := []float64{}
@@ -77,6 +78,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	chairIdAndRideId := []ChairIdAndRideId{}
 	for i, p := range P {
 		if p == 0 {
+			continue
+		}
+		if i == 0 {
 			continue
 		}
 		ride := rides[p-1]
