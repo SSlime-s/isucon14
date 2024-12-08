@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"math"
 	"net/http"
 
@@ -23,6 +24,8 @@ type ChairIdAndRideId struct {
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	slog.Info("startMatching")
 	// MEMO: 一旦最も待たせているリクエストに適当な空いている椅子マッチさせる実装とする。おそらくもっといい方法があるはず…
 	rides := []Ride{}
 	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 100`); err != nil {
@@ -62,6 +65,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	slog.Info("will match rides", slog.Int("rides", len(rides)), slog.Int("availableChairs", len(availableChairs)))
 	// slog.Info("will match rides", slog.Int("rides", len(rides)), slog.Int("availableChairs", len(availableChairs)))
 	if len(rides) > len(availableChairs) {
 		rides = rides[:len(availableChairs)]
@@ -95,6 +99,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chair := availableChairs[i-1]
 		chairIdAndRideId = append(chairIdAndRideId, ChairIdAndRideId{ChairID: chair.ID, RideID: ride.ID})
 	}
+	slog.Info("matched", slog.Int("matched", len(chairIdAndRideId)))
 
 	if len(chairIdAndRideId) == 0 {
 		w.WriteHeader(http.StatusNoContent)
