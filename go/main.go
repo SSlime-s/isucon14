@@ -133,12 +133,55 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	migrationTotalDistance()
+
 	if _, err := db.ExecContext(ctx, "UPDATE settings SET value = ? WHERE name = 'payment_gateway_url'", req.PaymentServer); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
+}
+
+func migrationTotalDistance() {
+	// chair_locations の情報を下に、chair_total_distances に集計する
+
+	locations := []ChairLocation{}
+	if err := db.Select(&locations, "SELECT chair_id, latitude, longitude FROM chair_locations ORDER BY created_at"); err != nil {
+		slog.Error("failed to select chair_locations", err)
+		return
+	}
+
+	totalDistances := map[string]ChairTotalDistance{}
+	lastLocation := map[string]Coordinate{}
+	for _, location := range locations {
+		distance := 0
+		last, ok := lastLocation[location.ChairID]
+		if !ok {
+			lastLocation[location.ChairID] = Coordinate{Latitude: location.Latitude, Longitude: location.Longitude}
+		} else {
+			distance = abs(location.Latitude-last.Latitude) + abs(location.Longitude-last.Longitude)
+			lastLocation[location.ChairID] = Coordinate{Latitude: location.Latitude, Longitude: location.Longitude}
+		}
+
+		if _, ok := totalDistances[location.ChairID]; !ok {
+			totalDistances[location.ChairID] = ChairTotalDistance{
+				ChairID:   location.ChairID,
+				Distance:  distance,
+				UpdatedAt: location.CreatedAt,
+			}
+		} else {
+			totalDistances[location.ChairID] = ChairTotalDistance{
+				ChairID:   location.ChairID,
+				Distance:  totalDistances[location.ChairID].Distance + distance,
+				UpdatedAt: location.CreatedAt,
+			}
+		}
+	}
+
+	if _, err := db.Exec("INSERT INTO chair_total_distances (chair_id, distance, updated_at) VALUES (:chair_id, :distance, :updated_at)", totalDistances); err != nil {
+		slog.Error("failed to insert chair_total_distances", err)
+	}
 }
 
 type Coordinate struct {
