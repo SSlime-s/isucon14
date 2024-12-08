@@ -859,6 +859,10 @@ type appGetNearbyChairsResponseChair struct {
 	CurrentCoordinate Coordinate `json:"current_coordinate"`
 }
 
+type chairIdWithStatus struct {
+	ChairID string `db:"chair_id"`
+	Status  string `db:"status"`
+}
 func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	latStr := r.URL.Query().Get("latitude")
@@ -903,58 +907,72 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	err = tx.SelectContext(
 		ctx,
 		&chairs,
-		`SELECT * FROM chairs`,
+		`SELECT * FROM chairs WHERE is_active = true`,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	chairIdToChairMap := map[string]*Chair{}
+	for _, chair := range chairs {
+		chairIdToChairMap[chair.ID] = &chair
+	}
+
+	nearbyChairs := []appGetNearbyChairsResponseChair{}
+	chairIds := []string{}
+	for _, chair := range chairs {
+		chairIds = append(chairIds, chair.ID)
+	}
+
+	query, args, err := sqlx.In(
+		`SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id WHERE (rs.ride_id, rs.created_at) IN (SELECT ride_id, MAX(created_at) FROM ride_statuses GROUP BY ride_id) AND r.chair_id IN (?)`,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	nearbyChairs := []appGetNearbyChairsResponseChair{}
+	rows := []chairIdWithStatus{}
+	if err := tx.SelectContext(ctx, &rows, query, args...); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	chairsStatuses := map[string]bool{}
 	for _, chair := range chairs {
-		if !chair.IsActive {
-			continue
+		chairsStatuses[chair.ID] = true
+	}
+	for _, row := range rows {
+		if row.Status != "COMPLETED" {
+			chairsStatuses[row.ChairID] = false
 		}
+	}
 
-		rides := []*Ride{}
-		if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+	okChairIds := []string{}
+	for chairID, isOk := range chairsStatuses {
+		if isOk {
+			okChairIds = append(okChairIds, chairID)
 		}
+	}
 
-		skip := false
-		for _, ride := range rides {
-			// 過去にライドが存在し、かつ、それが完了していない場合はスキップ
-			status, err := getLatestRideStatus(ctx, tx, ride.ID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-			if status != "COMPLETED" {
-				skip = true
-				break
-			}
-		}
-		if skip {
-			continue
-		}
+	chairLocations := []ChairLocation{}
+	query, args, err = sqlx.In(
+		`SELECT * FROM chair_locations WHERE (chair_id, created_at) IN (SELECT chair_id, MAX(created_at) FROM chair_locations WHERE chair_id IN (?) GROUP BY chair_id)`,
+		okChairIds,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 
-		// 最新の位置情報を取得
-		chairLocation := &ChairLocation{}
-		err = tx.GetContext(
-			ctx,
-			chairLocation,
-			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
-			chair.ID,
-		)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
+	if err := tx.SelectContext(ctx, &chairLocations, query, args...); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 
+	// TODO: 距離を計算するのは mysql 上でもできそうだが、現状は椅子の数が 500 個くらいなので、アプリ側で計算する
+	for _, chairLocation := range chairLocations {
+		chair := chairIdToChairMap[chairLocation.ChairID]
 		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
 			nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
 				ID:    chair.ID,
@@ -967,6 +985,63 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+
+	// for _, chair := range chairs {
+	// 	// if !chair.IsActive {
+	// 	// 	continue
+	// 	// }
+
+	// 	// rides := []*Ride{}
+	// 	// if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
+	// 	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	// 	return
+	// 	// }
+
+	// 	// skip := false
+	// 	// for _, ride := range rides {
+	// 	// 	// 過去にライドが存在し、かつ、それが完了していない場合はスキップ
+	// 	// 	status, err := getLatestRideStatus(ctx, tx, ride.ID)
+	// 	// 	if err != nil {
+	// 	// 		writeError(w, http.StatusInternalServerError, err)
+	// 	// 		return
+	// 	// 	}
+	// 	// 	if status != "COMPLETED" {
+	// 	// 		skip = true
+	// 	// 		break
+	// 	// 	}
+	// 	// }
+	// 	// if skip {
+	// 	// 	continue
+	// 	// }
+
+	// 	// // 最新の位置情報を取得
+	// 	// chairLocation := &ChairLocation{}
+	// 	// err = tx.GetContext(
+	// 	// 	ctx,
+	// 	// 	chairLocation,
+	// 	// 	`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
+	// 	// 	chair.ID,
+	// 	// )
+	// 	// if err != nil {
+	// 	// 	if errors.Is(err, sql.ErrNoRows) {
+	// 	// 		continue
+	// 	// 	}
+	// 	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	// 	return
+	// 	// }
+
+	// 	// if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
+	// 	// 	nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
+	// 	// 		ID:    chair.ID,
+	// 	// 		Name:  chair.Name,
+	// 	// 		Model: chair.Model,
+	// 	// 		CurrentCoordinate: Coordinate{
+	// 	// 			Latitude:  chairLocation.Latitude,
+	// 	// 			Longitude: chairLocation.Longitude,
+	// 	// 		},
+	// 	// 	})
+	// 	// }
+	// }
 
 	retrievedAt := &time.Time{}
 	err = tx.GetContext(
