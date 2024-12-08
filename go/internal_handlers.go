@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"net/http"
+
+	"github.com/jmoiron/sqlx"
 )
 
 type checkEmpties struct {
@@ -43,7 +45,12 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chair_ids = append(chair_ids, chair.ID)
 	}
 	empties := []checkEmpties{}
-	if err := db.SelectContext(ctx, &empties, `SELECT chair_id, COUNT(*) = 0 AS empty FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE`, chair_ids); err != nil {
+	query, args, err := sqlx.In(`SELECT chair_id, COUNT(*) = 0 AS empty FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE`, chair_ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := db.SelectContext(ctx, &empties, query, args...); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -55,6 +62,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// slog.Info("will match rides", slog.Int("rides", len(rides)), slog.Int("availableChairs", len(availableChairs)))
 	if len(rides) > len(availableChairs) {
 		rides = rides[:len(availableChairs)]
 	}
@@ -105,7 +113,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chairIds = append(chairIds, id.ChairID)
 		rideIds = append(rideIds, id.RideID)
 	}
-	args := make([]any, len(rideIds)+len(chairIds)+len(rideIds))
+	args = make([]any, len(rideIds)+len(chairIds)+len(rideIds))
 	for i, v := range rideIds {
 		args[i] = v
 	}
