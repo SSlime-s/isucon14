@@ -944,7 +944,8 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query, args, err := sqlx.In(
-		`SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id WHERE (rs.ride_id, rs.created_at) IN (SELECT ride_id, MAX(created_at) FROM ride_statuses GROUP BY ride_id) AND r.chair_id IN (?)`,
+		// `SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id WHERE (rs.ride_id, rs.created_at) IN (SELECT ride_id, MAX(created_at) FROM ride_statuses GROUP BY ride_id) AND r.chair_id IN (?)`,
+		`SELECT r.chair_id AS chair_id, rs.status AS status FROM ride_statuses rs LEFT JOIN rides r ON rs.ride_id = r.id INNER JOIN (SELECT ride_id, MAX(created_at) AS max_created_at FROM ride_statuses GROUP BY ride_id) latest_rs ON rs.ride_id = latest_rs.ride_id AND rs.created_at = latest_rs.max_created_at WHERE r.chair_id IN (?)`,
 		chairIds,
 	)
 	if err != nil {
@@ -995,7 +996,8 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 
 	chairLocations := []ChairLocation{}
 	query, args, err = sqlx.In(
-		`SELECT * FROM chair_locations WHERE (chair_id, created_at) IN (SELECT chair_id, MAX(created_at) FROM chair_locations WHERE chair_id IN (?) GROUP BY chair_id)`,
+		// `SELECT * FROM chair_locations WHERE (chair_id, created_at) IN (SELECT chair_id, MAX(created_at) FROM chair_locations WHERE chair_id IN (?) GROUP BY chair_id)`,
+		`SELECT cl.* FROM chair_locations cl JOIN (SELECT chair_id, MAX(created_at) AS max_created_at FROM chair_locations WHERE chair_id IN (?) GROUP BY chair_id) latest_chairs ON cl.chair_id = latest_chairs.chair_id AND cl.created_at = latest_chairs.max_created_at`,
 		okChairIds,
 	)
 	if err != nil {
