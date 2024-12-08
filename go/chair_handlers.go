@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 )
@@ -111,42 +112,24 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	latestLocation := &ChairLocation{}
 	distance := 0
-	if err := tx.GetContext(ctx, latestLocation, `SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`, chair.ID); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-	} else {
+	latestLocation, found := LatestChairLocation.Get(chair.ID)
+	if found {
 		distance = abs(latestLocation.Latitude-req.Latitude) + abs(latestLocation.Longitude-req.Longitude)
+	} else {
+		TotalDistance.Set(chair.ID, 0)
 	}
 
-	chairLocationID := ulid.Make().String()
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`,
-		chairLocationID, chair.ID, req.Latitude, req.Longitude,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+	latestUpdatedAt := time.Now()
+	LatestChairLocation.Set(chair.ID, ChairLocationCached{
+		ChairID:   chair.ID,
+		Latitude:  req.Latitude,
+		Longitude: req.Longitude,
+		UpdatedAt: latestUpdatedAt,
+	})
 
 	if distance > 0 {
-		if _, err := tx.ExecContext(
-			ctx,
-			`INSERT INTO chair_total_distances (chair_id, distance) VALUES (?, ?) ON DUPLICATE KEY UPDATE distance = distance + ?`,
-			chair.ID, distance, distance,
-		); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-	}
-
-	location := &ChairLocation{}
-	if err := tx.GetContext(ctx, location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		TotalDistance.Incr(chair.ID, distance)
 	}
 
 	ride := &Ride{}
@@ -184,7 +167,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, &chairPostCoordinateResponse{
-		RecordedAt: location.CreatedAt.UnixMilli(),
+		RecordedAt: latestUpdatedAt.UnixMilli(),
 	})
 }
 

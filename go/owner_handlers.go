@@ -172,8 +172,6 @@ type chairWithDetail struct {
 	IsActive               bool         `db:"is_active"`
 	CreatedAt              time.Time    `db:"created_at"`
 	UpdatedAt              time.Time    `db:"updated_at"`
-	TotalDistance          int          `db:"total_distance"`
-	TotalDistanceUpdatedAt sql.NullTime `db:"total_distance_updated_at"`
 }
 
 type ownerGetChairResponse struct {
@@ -202,11 +200,8 @@ func ownerGetChairs(w http.ResponseWriter, r *http.Request) {
 				model,
 				is_active,
 				created_at,
-				chairs.updated_at,
-				IFNULL(chair_total_distances.distance, 0) AS total_distance,
-				chair_total_distances.updated_at AS total_distance_updated_at
+				updated_at
 			FROM chairs
-				LEFT JOIN chair_total_distances ON chair_total_distances.chair_id = chairs.id
 			WHERE owner_id = ?
 	`, owner.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -215,16 +210,21 @@ func ownerGetChairs(w http.ResponseWriter, r *http.Request) {
 
 	res := ownerGetChairResponse{}
 	for _, chair := range chairs {
+		total, found := TotalDistance.Get(chair.ID)
+		if !found {
+			total = 0
+		}
+		latestChairLocation, found := LatestChairLocation.Get(chair.ID)
 		c := ownerGetChairResponseChair{
 			ID:            chair.ID,
 			Name:          chair.Name,
 			Model:         chair.Model,
 			Active:        chair.IsActive,
 			RegisteredAt:  chair.CreatedAt.UnixMilli(),
-			TotalDistance: chair.TotalDistance,
+			TotalDistance: total,
 		}
-		if chair.TotalDistanceUpdatedAt.Valid {
-			t := chair.TotalDistanceUpdatedAt.Time.UnixMilli()
+		if found {
+			t := latestChairLocation.UpdatedAt.UnixMilli()
 			c.TotalDistanceUpdatedAt = &t
 		}
 		res.Chairs = append(res.Chairs, c)

@@ -10,7 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
+	"github.com/catatsuy/cache"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-sql-driver/mysql"
@@ -18,6 +20,18 @@ import (
 )
 
 var db *sqlx.DB
+
+type ChairLocationCached struct {
+	ChairID   string
+	Latitude  int
+	Longitude int
+	UpdatedAt time.Time
+}
+
+var (
+	LatestChairLocation = cache.NewWriteHeavyCache[string, ChairLocationCached]()
+	TotalDistance       = cache.NewWriteHeavyCacheInteger[string, int]()
+)
 
 func main() {
 	mux := setup()
@@ -140,9 +154,10 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok := migrationTotalDistance(w, r); !ok {
-		return
-	}
+	// if ok := migrationTotalDistance(w, r); !ok {
+	// 	return
+	// }
+	calcCache(w, r)
 
 	if _, err := db.ExecContext(ctx, "UPDATE settings SET value = ? WHERE name = 'payment_gateway_url'", req.PaymentServer); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -150,6 +165,36 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
+}
+
+func calcCache(w http.ResponseWriter, r *http.Request) {
+	locations := []ChairLocation{}
+	if err := db.Select(&locations, "SELECT * FROM chair_locations ORDER BY created_at"); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	totalDistances := map[string]int{}
+	lastLocation := map[string]ChairLocationCached{}
+	for _, location := range locations {
+		distance := 0
+		last, ok := lastLocation[location.ChairID]
+		if !ok {
+			lastLocation[location.ChairID] = ChairLocationCached{ChairID: location.ChairID, Latitude: location.Latitude, Longitude: location.Longitude, UpdatedAt: location.CreatedAt}
+		} else {
+			distance = abs(location.Latitude-last.Latitude) + abs(location.Longitude-last.Longitude)
+			lastLocation[location.ChairID] = ChairLocationCached{ChairID: location.ChairID, Latitude: location.Latitude, Longitude: location.Longitude, UpdatedAt: location.CreatedAt}
+		}
+
+		if _, ok := totalDistances[location.ChairID]; !ok {
+			totalDistances[location.ChairID] = distance
+		} else {
+			totalDistances[location.ChairID] += distance
+		}
+	}
+
+	LatestChairLocation.SetItems(lastLocation)
+	TotalDistance.SetItems(totalDistances)
 }
 
 func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {

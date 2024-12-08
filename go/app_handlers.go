@@ -994,25 +994,16 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chairLocations := []ChairLocation{}
-	query, args, err = sqlx.In(
-		// `SELECT * FROM chair_locations WHERE (chair_id, created_at) IN (SELECT chair_id, MAX(created_at) FROM chair_locations WHERE chair_id IN (?) GROUP BY chair_id)`,
-		`SELECT cl.* FROM chair_locations cl JOIN (SELECT chair_id, MAX(created_at) AS max_created_at FROM chair_locations WHERE chair_id IN (?) GROUP BY chair_id) latest_chairs ON cl.chair_id = latest_chairs.chair_id AND cl.created_at = latest_chairs.max_created_at`,
-		okChairIds,
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	if err := tx.SelectContext(ctx, &chairLocations, query, args...); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+	chairLocations := LatestChairLocation.GetItems()
 
 	// TODO: 距離を計算するのは mysql 上でもできそうだが、現状は椅子の数が 500 個くらいなので、アプリ側で計算する
-	for _, chairLocation := range chairLocations {
-		chair := chairIdToChairMap[chairLocation.ChairID]
+	for _, chairId := range okChairIds {
+		chair := chairIdToChairMap[chairId]
+		chairLocation, ok := chairLocations[chairId]
+		if !ok {
+			continue
+		}
+
 		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
 			nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
 				ID:    chair.ID,
