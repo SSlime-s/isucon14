@@ -151,6 +151,7 @@ func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {
 	locations := []ChairLocation{}
 	if err := db.Select(&locations, "SELECT chair_id, latitude, longitude FROM chair_locations ORDER BY created_at"); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
+		WriteErrorTmp("migrationTotalDistance1: " + err.Error())
 		return false
 	}
 
@@ -183,10 +184,23 @@ func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {
 
 	if _, err := db.NamedExec("INSERT INTO chair_total_distances (chair_id, distance, updated_at) VALUES (:chair_id, :distance, :updated_at)", totalDistances); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
+		WriteErrorTmp("migrationTotalDistance2: " + err.Error())
 		return false
 	}
 
 	return true
+}
+
+func WriteErrorTmp(errString string) {
+	f, err := os.Create("~/tmp")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	_, err = f.WriteString(errString)
+	if err != nil {
+		panic(err)
+	}
 }
 
 type Coordinate struct {
