@@ -1,4 +1,4 @@
-.PHONY: create-log-dir log-mysql log-nginx log-all
+.PHONY: create-log-dir log-mysql log-nginx log-all update-go restart-mysql restart-nginx
 
 create-log-dir:
 	mkdir -p ~/webapp/log/$(shell git show --format='%h' --no-patch)
@@ -21,3 +21,9 @@ log-all: log-mysql log-nginx
 update-go:
 	cd ~/webapp/go && go build -o isuride
 	sudo systemctl restart isuride-go.service
+
+restart-mysql:
+	sudo systemctl restart mysql.service
+
+restart-nginx:
+	sudo systemctl restart nginx.service
