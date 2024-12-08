@@ -31,21 +31,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 		}
 
-		// if err := db.GetContext(ctx, &empty, "SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE", matched.ID); err != nil {
-		// 	writeError(w, http.StatusInternalServerError, err)
-		// 	return
-		// }
-		// 最新のステータスが completed かどうかだけを見る
-		status := ""
-		if err := db.GetContext(ctx, &status, "SELECT status FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) ORDER BY created_at DESC LIMIT 1", matched.ID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				empty = true
-				break
-			}
+		if err := db.GetContext(ctx, &empty, "SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE", matched.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		empty = status == "COMPLETED"
 		if empty {
 			break
 		}
