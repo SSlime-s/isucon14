@@ -111,6 +111,17 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	latestLocation := &ChairLocation{}
+	distance := 0
+	if err := tx.GetContext(ctx, latestLocation, `SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`, chair.ID); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	} else {
+		distance = abs(latestLocation.Latitude-req.Latitude) + abs(latestLocation.Longitude-req.Longitude)
+	}
+
 	chairLocationID := ulid.Make().String()
 	if _, err := tx.ExecContext(
 		ctx,
@@ -119,6 +130,17 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	if distance > 0 {
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO chair_total_distances (chair_id, distance) VALUES (?, ?) ON DUPLICATE KEY UPDATE distance = distance + ?`,
+			chair.ID, distance, distance,
+		); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 
 	location := &ChairLocation{}
