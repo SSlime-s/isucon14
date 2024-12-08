@@ -20,7 +20,7 @@ CREATE TABLE chair_models
   PRIMARY KEY (name)
 )
   COMMENT = '椅子モデルテーブル';
-
+DROP TABLE IF EXISTS chair_total_distances;
 DROP TABLE IF EXISTS chairs;
 CREATE TABLE chairs
 (
@@ -51,7 +51,8 @@ CREATE TABLE chair_locations
 )
   COMMENT = '椅子の現在位置情報テーブル';
 
-DROP TABLE IF EXISTS chair_total_distances;
+-- chairs の前に落とす
+-- DROP TABLE IF EXISTS chair_total_distances;
 CREATE TABLE chair_total_distances
 (
   chair_id VARCHAR(26) NOT NULL COMMENT '椅子ID',
