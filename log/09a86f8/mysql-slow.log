@@ -1,0 +1,51 @@
+
+# 270ms user time, 10ms system time, 26.62M rss, 32.62M vsz
+# Current date: Sun Dec  8 08:35:13 2024
+# Hostname: ip-192-168-0-11
+# Files: /var/log/mysql/mysql-slow.log
+# Overall: 1.60k total, 2 unique, 1.86 QPS, 0.00x concurrency ____________
+# Time range: 2024-12-08T08:14:48 to 2024-12-08T08:29:11
+# Attribute          total     min     max     avg     95%  stddev  median
+# ============     ======= ======= ======= ======= ======= ======= =======
+# Exec time          497ms    13us    13ms   310us   332us   315us   301us
+# Lock time            6ms       0    30us     3us     3us     1us     2us
+# Rows sent              0       0       0       0       0       0       0
+# Rows examine           0       0       0       0       0       0       0
+# Query size       112.67k      27      72   71.97   69.19    1.08   69.19
+
+# Profile
+# Rank Query ID                            Response time Calls R/Call V/M 
+# ==== =================================== ============= ===== ====== ====
+#    1 0x849E1710AFAB52A574793C57AB60F504  0.4975 100.0%  1602 0.0003  0.00 SELECT rides
+# MISC 0xMISC                               0.0000  0.0%     1 0.0000   0.0 <1 ITEMS>
+
+# Query 1: 1.86 QPS, 0.00x concurrency, ID 0x849E1710AFAB52A574793C57AB60F504 at byte 422
+# This item is included in the report because it matches --limit.
+# Scores: V/M = 0.00
+# Time range: 2024-12-08T08:14:48 to 2024-12-08T08:29:11
+# Attribute    pct   total     min     max     avg     95%  stddev  median
+# ============ === ======= ======= ======= ======= ======= ======= =======
+# Count         99    1602
+# Exec time     99   497ms   238us    13ms   310us   332us   315us   301us
+# Lock time    100     6ms     2us    30us     3us     3us     1us     2us
+# Rows sent      0       0       0       0       0       0       0       0
+# Rows examine   0       0       0       0       0       0       0       0
+# Query size    99 112.64k      72      72      72      72       0      72
+# String:
+# Databases    isuride
+# Hosts        localhost
+# Users        isucon
+# Query_time distribution
+#   1us
+#  10us
+# 100us  ################################################################
+#   1ms
+#  10ms  #
+# 100ms
+#    1s
+#  10s+
+# Tables
+#    SHOW TABLE STATUS FROM `isuride` LIKE 'rides'\G
+#    SHOW CREATE TABLE `isuride`.`rides`\G
+# EXPLAIN /*!50100 PARTITIONS*/
+SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 100\G
