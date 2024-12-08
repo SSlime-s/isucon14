@@ -65,6 +65,12 @@ func setup() http.Handler {
 	}
 	db = _db
 
+	db.SetMaxOpenConns(1024)
+	db.SetMaxIdleConns(1024)
+
+	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 1024
+	http.DefaultTransport.(*http.Transport).MaxIdleConns = 0 // infinity
+
 	mux := chi.NewRouter()
 	mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
