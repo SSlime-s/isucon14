@@ -9,7 +9,7 @@ import (
 
 type checkEmpties struct {
 	ChairID string `db:"chair_id"`
-	Empty   bool   `db:"empty"`
+	Empty   bool   `db:"is_empty"`
 }
 type chairIdWithModel struct {
 	ID    string `db:"chair_id"`
@@ -45,7 +45,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chair_ids = append(chair_ids, chair.ID)
 	}
 	empties := []checkEmpties{}
-	query, args, err := sqlx.In(`SELECT chair_id, COUNT(*) = 0 AS empty FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE`, chair_ids)
+	query, args, err := sqlx.In(`SELECT chair_id, COUNT(*) = 0 AS is_empty FROM (SELECT chair_id, COUNT(chair_sent_at) = 6 AS completed FROM rides AS r LEFT JOIN ride_statuses AS rs ON rs.ride_id = r.id WHERE r.chair_id IN (?) GROUP BY ride_id, chair_id) is_completed WHERE completed = FALSE GROUP BY chair_id`, chair_ids)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
