@@ -133,7 +133,9 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	migrationTotalDistance()
+	if ok := migrationTotalDistance(w, r); !ok {
+		return
+	}
 
 	if _, err := db.ExecContext(ctx, "UPDATE settings SET value = ? WHERE name = 'payment_gateway_url'", req.PaymentServer); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -143,13 +145,13 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
 }
 
-func migrationTotalDistance() {
+func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {
 	// chair_locations の情報を下に、chair_total_distances に集計する
 
 	locations := []ChairLocation{}
 	if err := db.Select(&locations, "SELECT chair_id, latitude, longitude FROM chair_locations ORDER BY created_at"); err != nil {
-		slog.Error("failed to select chair_locations", err)
-		return
+		writeError(w, http.StatusInternalServerError, err)
+		return false
 	}
 
 	totalDistances := map[string]ChairTotalDistance{}
@@ -180,8 +182,11 @@ func migrationTotalDistance() {
 	}
 
 	if _, err := db.Exec("INSERT INTO chair_total_distances (chair_id, distance, updated_at) VALUES (:chair_id, :distance, :updated_at)", totalDistances); err != nil {
-		slog.Error("failed to insert chair_total_distances", err)
+		writeError(w, http.StatusInternalServerError, err)
+		return false
 	}
+
+	return true
 }
 
 type Coordinate struct {
