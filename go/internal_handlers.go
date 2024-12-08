@@ -36,7 +36,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		// 	return
 		// }
 		// 最新のステータスが completed かどうかだけを見る
-		if err := db.GetContext(ctx, &empty, "SELECT status = 'completed' FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) ORDER BY created_at DESC LIMIT 1", matched.ID); err != nil {
+		if err := db.GetContext(ctx, &empty, "SELECT status = 'COMPLETED' FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) ORDER BY created_at DESC LIMIT 1", matched.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
