@@ -149,7 +149,7 @@ func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {
 	// chair_locations の情報を下に、chair_total_distances に集計する
 
 	locations := []ChairLocation{}
-	if err := db.Select(&locations, "SELECT chair_id, latitude, longitude FROM chair_locations ORDER BY created_at"); err != nil {
+	if err := db.Select(&locations, "SELECT * FROM chair_locations ORDER BY created_at"); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return false
 	}
