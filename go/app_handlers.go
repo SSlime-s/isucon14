@@ -291,6 +291,34 @@ func getLatestRideStatus(ctx context.Context, tx executableGet, rideID string) (
 	return status, nil
 }
 
+type rideIdWithStatus struct {
+	RideID string `db:"ride_id"`
+	Status string `db:"status"`
+}
+
+func getBulkLatestRideStatus(ctx context.Context, tx executableGet, rideIDs []string) (map[string]string, error) {
+	statuses := map[string]string{}
+	if len(rideIDs) == 0 {
+		return statuses, nil
+	}
+
+	query, args, err := sqlx.In(`SELECT ride_id, status FROM ride_statuses WHERE ride_id IN (?) ORDER BY created_at DESC`, rideIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := []rideIdWithStatus{}
+	if err := tx.GetContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		statuses[row.RideID] = row.Status
+	}
+
+	return statuses, nil
+}
+
 func appPostRides(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := &appPostRidesRequest{}
@@ -673,7 +701,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, user.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusOK, &appGetNotificationResponse{
-				RetryAfterMs: 30,
+				RetryAfterMs: RETRY_AFTER_MS,
 			})
 			return
 		}
@@ -720,7 +748,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: ride.CreatedAt.UnixMilli(),
 			UpdateAt:  ride.UpdatedAt.UnixMilli(),
 		},
-		RetryAfterMs: 30,
+		RetryAfterMs: RETRY_AFTER_MS,
 	}
 
 	if ride.ChairID.Valid {
