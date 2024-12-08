@@ -17,3 +17,7 @@ log-all: log-mysql log-nginx
 	git add ~/webapp/log/$(shell git show --format='%h' --no-patch)
 	git commit -m "log $(shell git show --format='%h' --no-patch)"
 	git push
+
+update-go:
+	cd ~/webapp/go && go build -o isuride
+	sudo systemctl restart isuride-go.service
