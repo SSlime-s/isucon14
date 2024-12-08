@@ -181,7 +181,11 @@ func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {
 		}
 	}
 
-	if _, err := db.NamedExec("INSERT INTO chair_total_distances (chair_id, distance, updated_at) VALUES (:chair_id, :distance, :updated_at)", totalDistances); err != nil {
+	totalDistancesSlice := []ChairTotalDistance{}
+	for _, totalDistance := range totalDistances {
+		totalDistancesSlice = append(totalDistancesSlice, totalDistance)
+	}
+	if _, err := db.NamedExec("INSERT INTO chair_total_distances (chair_id, distance, updated_at) VALUES (:chair_id, :distance, :updated_at)", totalDistancesSlice); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return false
 	}
