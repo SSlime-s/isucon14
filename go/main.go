@@ -181,7 +181,7 @@ func migrationTotalDistance(w http.ResponseWriter, r *http.Request) (ok bool) {
 		}
 	}
 
-	if _, err := db.Exec("INSERT INTO chair_total_distances (chair_id, distance, updated_at) VALUES (:chair_id, :distance, :updated_at)", totalDistances); err != nil {
+	if _, err := db.NamedExec("INSERT INTO chair_total_distances (chair_id, distance, updated_at) VALUES (:chair_id, :distance, :updated_at)", totalDistances); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return false
 	}
