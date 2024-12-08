@@ -31,6 +31,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	if err := db.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 100`); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 	}
+	if len(rides) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	chairs := []chairIdWithModel{}
 	if err := db.SelectContext(ctx, &chairs, `SELECT id AS chair_id, speed FROM chairs LEFT JOIN chair_models ON chairs.model = chair_models.name WHERE is_active = TRUE`); err != nil {
