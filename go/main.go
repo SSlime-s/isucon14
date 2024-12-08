@@ -128,14 +128,20 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	WriteErrorTmp("131")
+
 	if out, err := exec.Command("../sql/init.sh").CombinedOutput(); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to initialize: %s: %w", string(out), err))
 		return
 	}
 
+	WriteErrorTmp("138")
+
 	if ok := migrationTotalDistance(w, r); !ok {
 		return
 	}
+
+	WriteErrorTmp("migrationTotalDistance success")
 
 	if _, err := db.ExecContext(ctx, "UPDATE settings SET value = ? WHERE name = 'payment_gateway_url'", req.PaymentServer); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
