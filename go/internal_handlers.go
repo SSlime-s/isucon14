@@ -57,11 +57,16 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	emptyMap := map[string]bool{}
+	for _, empty := range empties {
+		emptyMap[empty.ChairID] = empty.Empty
+	}
 
 	availableChairs := []chairIdWithModel{}
-	for _, empty := range empties {
-		if empty.Empty {
-			availableChairs = append(availableChairs, chairIdToChair[empty.ChairID])
+	for _, chair := range chairs {
+		empty, ok := emptyMap[chair.ID]
+		if !ok || empty {
+			availableChairs = append(availableChairs, chair)
 		}
 	}
 
